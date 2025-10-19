@@ -1,17 +1,30 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { Mail, Plus } from "lucide-react";
+import { Mail } from "lucide-react";
 import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
 
 import { getQueryClient, trpc } from "@/trpc/server";
 import { Button } from "@/components/ui/button";
 import { BroadcastsClient } from "@/modules/broadcast/ui/broadcasts-client";
 
-export default async function BroadcastsPage() {
+export default async function BroadcastsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; limit?: string }>;
+}) {
   const queryClient = getQueryClient();
 
+  const params = await searchParams;
+  const page = Number(params.page) || 1;
+  const limit = Number(params.limit) || 10;
+
   try {
-    void queryClient.prefetchQuery(trpc.broadcasts.getMany.queryOptions());
+    void queryClient.prefetchQuery(
+      trpc.broadcasts.getMany.queryOptions({
+        page,
+        limit,
+      })
+    );
 
     return (
       <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
@@ -19,16 +32,10 @@ export default async function BroadcastsPage() {
           <h2 className="text-3xl font-bold tracking-tight">
             Newsletter Broadcasts
           </h2>
-          <Link href="/broadcasts/new">
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Broadcast
-            </Button>
-          </Link>
         </div>
         <HydrationBoundary state={dehydrate(queryClient)}>
           <Suspense fallback={<div>Loading broadcasts...</div>}>
-            <BroadcastsClient />
+            <BroadcastsClient initialPage={page} initialPageSize={limit} />
           </Suspense>
         </HydrationBoundary>
       </div>

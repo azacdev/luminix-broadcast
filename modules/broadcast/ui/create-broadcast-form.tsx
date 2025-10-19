@@ -157,7 +157,7 @@ export function CreateBroadcastForm() {
           ? "Broadcast sent successfully!"
           : "Broadcast scheduled successfully!";
       toast.success(message);
-      router.push("/dashboard/newsletter/broadcasts");
+      router.push("/broadcasts");
     } catch (error) {
       console.error("Error sending broadcast:", error);
       toast.error("Failed to send broadcast");
@@ -208,7 +208,7 @@ export function CreateBroadcastForm() {
                         onChange={(e) => handleTitleChange(e.target.value)}
                         className={cn(
                           "!text-2xl font-bold border-t-0 border-l-0 border-r-0 px-0 py-2 placeholder:text-muted-foreground/50 focus-visible:ring-0 bg-transparent h-auto",
-                          "border-b border-input"
+                          "border-b border-input shadow-none"
                         )}
                       />
                     </FormControl>
@@ -217,7 +217,7 @@ export function CreateBroadcastForm() {
                 )}
               />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4 border-y border-border">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4 border-b border-border">
                 <FormField
                   control={form.control}
                   name="subject"

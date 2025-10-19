@@ -8,11 +8,24 @@ import { SubscribersClient } from "@/modules/subscribers/ui/subscribers-client";
 import { SubscribersLoadingSkeleton } from "@/modules/subscribers/ui/subscribers-loading-skeleton";
 import { Button } from "@/components/ui/button";
 
-export default async function SubscribersPage() {
+export default async function SubscribersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; limit?: string }>;
+}) {
   const queryClient = getQueryClient();
 
+  const params = await searchParams;
+  const page = Number(params.page) || 1;
+  const limit = Number(params.limit) || 10;
+
   try {
-    void queryClient.prefetchQuery(trpc.subscribers.getMany.queryOptions());
+    void queryClient.prefetchQuery(
+      trpc.subscribers.getMany.queryOptions({
+        page,
+        limit,
+      })
+    );
 
     return (
       <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
@@ -23,7 +36,7 @@ export default async function SubscribersPage() {
         </div>
         <HydrationBoundary state={dehydrate(queryClient)}>
           <Suspense fallback={<SubscribersLoadingSkeleton />}>
-            <SubscribersClient />
+            <SubscribersClient initialPage={page} initialPageSize={limit} />
           </Suspense>
         </HydrationBoundary>
       </div>

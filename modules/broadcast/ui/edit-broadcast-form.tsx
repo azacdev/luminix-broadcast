@@ -265,7 +265,7 @@ export function EditBroadcastForm({ broadcastId }: EditBroadcastFormProps) {
                         onChange={(e) => handleTitleChange(e.target.value)}
                         className={cn(
                           "!text-2xl font-bold border-t-0 border-l-0 border-r-0 px-0 py-2 placeholder:text-muted-foreground/50 focus-visible:ring-0 bg-transparent h-auto",
-                          "border-b border-input"
+                          "border-b border-input shadow-none"
                         )}
                       />
                     </FormControl>

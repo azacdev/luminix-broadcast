@@ -1,21 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import {
-  Plus,
-  Search,
-  MoreHorizontal,
-  Trash2,
-  Upload,
-  Copy,
-} from "lucide-react";
-
+import { useState, useEffect, useMemo } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Plus, Search, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useRouter, useSearchParams } from "next/navigation";
+
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -24,67 +17,128 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { BulkImportModal } from "./bulk-import-modal";
 import { AddSubscriberModal } from "./add-subscriber-modal";
-import { RemoveSubscriberModal } from "./remove-subscriber-modal";
+import { SubscribersDataTable } from "./subscribers-data-table";
+import { subscribersColumns } from "./subscribers-columns";
+import { SubscribersTableSkeleton } from "./subscribers-table-skeleton";
 
-export function SubscribersClient() {
+interface SubscribersClientProps {
+  initialPage?: number;
+  initialPageSize?: number;
+}
+
+export function SubscribersClient({
+  initialPage = 1,
+  initialPageSize = 10,
+}: SubscribersClientProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [page, setPage] = useState(initialPage);
+  const [pageSize, setPageSize] = useState(initialPageSize);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [rowSelection, setRowSelection] = useState({});
+
   const trpc = useTRPC();
 
-  const { data: subscribers = [], refetch } = useQuery(
-    trpc.subscribers.getMany.queryOptions()
+  // Update URL when page or pageSize changes
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (page !== 1) {
+      params.set("page", page.toString());
+    } else {
+      params.delete("page");
+    }
+
+    if (pageSize !== 10) {
+      params.set("limit", pageSize.toString());
+    } else {
+      params.delete("limit");
+    }
+
+    const newUrl = params.toString()
+      ? `?${params.toString()}`
+      : window.location.pathname;
+
+    router.replace(newUrl, { scroll: false });
+  }, [page, pageSize, router, searchParams]);
+
+  const { data, refetch, isLoading } = useQuery(
+    trpc.subscribers.getMany.queryOptions({
+      page,
+      limit: pageSize,
+    })
   );
 
-  const filteredSubscribers = subscribers.filter((subscriber) => {
-    const email = subscriber.email || "";
-    const matchesSearch = email
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase());
-    const matchesStatus =
-      filterStatus === "all" || subscriber.status === filterStatus;
+  const deleteMany = useMutation(
+    trpc.subscribers.deleteMany.mutationOptions({
+      onSuccess: (result) => {
+        toast.success(`Successfully deleted ${result.deleted} subscriber(s)`);
+        setShowDeleteDialog(false);
+        setRowSelection({});
+        refetch();
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to delete subscribers");
+      },
+    })
+  );
 
-    return matchesSearch && matchesStatus;
-  });
+  const subscribers = data?.subscribers || [];
+  const totalPages = data?.totalPages || 1;
+  const total = data?.total || 0;
 
-  const getStatusBadge = (status: string) => {
-    const colors = {
-      active: "bg-green-100 text-green-800",
-      unsubscribed: "bg-red-100 text-red-800",
-    };
-    return (
-      <Badge
-        variant="outline"
-        className={
-          colors[status as keyof typeof colors] || "bg-gray-100 text-gray-800"
-        }
-      >
-        {status.toUpperCase()}
-      </Badge>
-    );
+  // Memoize filtered subscribers to prevent unnecessary recalculations
+  const filteredSubscribers = useMemo(() => {
+    return subscribers.filter((subscriber) => {
+      const email = subscriber.email || "";
+      const matchesSearch = email
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
+      const matchesStatus =
+        filterStatus === "all" || subscriber.status === filterStatus;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [subscribers, searchTerm, filterStatus]);
+
+  // Get selected subscriber IDs from rowSelection state
+  const selectedIds = useMemo(() => {
+    return Object.keys(rowSelection)
+      .filter((key) => rowSelection[key as keyof typeof rowSelection])
+      .map((index) => filteredSubscribers[parseInt(index)]?.id)
+      .filter(Boolean);
+  }, [rowSelection, filteredSubscribers]);
+
+  const handleBulkDelete = () => {
+    if (selectedIds.length === 0) {
+      toast.error("Please select at least one subscriber to delete");
+      return;
+    }
+    setShowDeleteDialog(true);
+  };
+
+  const confirmBulkDelete = () => {
+    if (selectedIds.length === 0) return;
+    deleteMany.mutate({ ids: selectedIds });
   };
 
   return (
@@ -129,13 +183,29 @@ export function SubscribersClient() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Subscribers ({filteredSubscribers.length})</CardTitle>
-          <CardDescription>
-            Manage your newsletter subscribers and their preferences
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Subscribers ({total})</CardTitle>
+              <CardDescription>
+                Manage your newsletter subscribers and their preferences
+              </CardDescription>
+            </div>
+            {selectedIds.length > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBulkDelete}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete Selected ({selectedIds.length})
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
-          {filteredSubscribers.length === 0 ? (
+          {isLoading ? (
+            <SubscribersTableSkeleton />
+          ) : filteredSubscribers.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <div className="rounded-full bg-muted p-3 mb-4">
                 <Search className="h-6 w-6 text-muted-foreground" />
@@ -160,74 +230,53 @@ export function SubscribersClient() {
               )}
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Subscribed</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredSubscribers.map((subscriber) => (
-                  <TableRow key={subscriber.id}>
-                    <TableCell className="font-medium">
-                      {subscriber.email}
-                    </TableCell>
-                    <TableCell>{getStatusBadge(subscriber.status)}</TableCell>
-                    <TableCell className="capitalize">
-                      {subscriber.source}
-                    </TableCell>
-                    {/* <TableCell>{subscriber.created_at}</TableCell> */}
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem
-                            onClick={() => {
-                              navigator.clipboard
-                                .writeText(subscriber.email)
-                                .then(() => {
-                                  toast.success("Email copied to clipboard");
-                                })
-                                .catch(() => {
-                                  toast.error("Failed to copy email");
-                                });
-                            }}
-                          >
-                            <Copy />
-                            Copy email
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <RemoveSubscriberModal
-                            subscriberId={subscriber.id}
-                            subscriberEmail={subscriber.email}
-                            onRemove={() => refetch()}
-                          >
-                            <DropdownMenuItem
-                              onSelect={(e) => e.preventDefault()}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Remove
-                            </DropdownMenuItem>
-                          </RemoveSubscriberModal>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <SubscribersDataTable
+              columns={subscribersColumns}
+              data={filteredSubscribers}
+              pageCount={totalPages}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+              rowSelection={rowSelection}
+              onRowSelectionChange={setRowSelection}
+            />
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Subscribers</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {selectedIds.length}{" "}
+              subscriber(s)? This action cannot be undone and will remove them
+              from both your database and Resend audience.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeleteDialog(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmBulkDelete}
+              disabled={deleteMany.isPending}
+            >
+              {deleteMany.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

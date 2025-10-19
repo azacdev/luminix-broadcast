@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Resend } from "resend";
 import { v4 as uuidv4 } from "uuid";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
 import { newsletterSubscribers } from "@/db/schema";
@@ -11,14 +11,35 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const AUDIENCE_ID = process.env.RESEND_AUDIENCE_ID;
 
 export const subscribersRouter = createTRPCRouter({
-  getMany: baseProcedure.query(async ({ ctx }) => {
-    const subscribers = await ctx.db
-      .select()
-      .from(newsletterSubscribers)
-      .orderBy(desc(newsletterSubscribers.created_at));
+  getMany: baseProcedure
+    .input(
+      z.object({
+        page: z.number().min(1).default(1),
+        limit: z.number().min(1).max(100).default(10),
+      })
+    )
+    .query(async ({ input, ctx }) => {
+      const offset = (input.page - 1) * input.limit;
 
-    return subscribers;
-  }),
+      const subscribers = await ctx.db
+        .select()
+        .from(newsletterSubscribers)
+        .orderBy(desc(newsletterSubscribers.created_at))
+        .limit(input.limit)
+        .offset(offset);
+
+      const [{ count }] = await ctx.db
+        .select({ count: sql<number>`count(*)` })
+        .from(newsletterSubscribers);
+
+      return {
+        subscribers,
+        total: Number(count),
+        page: input.page,
+        limit: input.limit,
+        totalPages: Math.ceil(Number(count) / input.limit),
+      };
+    }),
   create: baseProcedure
     .input(
       z.object({
@@ -129,6 +150,63 @@ export const subscribersRouter = createTRPCRouter({
         .where(eq(newsletterSubscribers.id, input.id));
 
       return subscriber;
+    }),
+  deleteMany: baseProcedure
+    .input(
+      z.object({
+        ids: z
+          .array(z.string().min(1))
+          .min(1, { message: "At least one id is required" }),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const subscribers = await ctx.db
+        .select()
+        .from(newsletterSubscribers)
+        .where(inArray(newsletterSubscribers.id, input.ids));
+
+      if (subscribers.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "No subscribers found",
+        });
+      }
+
+      // Delete from Resend in parallel
+      const resendDeletions = subscribers.map(async (subscriber) => {
+        if (subscriber.resend_contact_id || subscriber.email) {
+          try {
+            if (subscriber.resend_contact_id) {
+              await resend.contacts.remove({
+                id: subscriber.resend_contact_id,
+                audienceId: process.env.RESEND_AUDIENCE_ID!,
+              });
+            } else if (subscriber.email) {
+              await resend.contacts.remove({
+                email: subscriber.email,
+                audienceId: process.env.RESEND_AUDIENCE_ID!,
+              });
+            }
+          } catch (resendError) {
+            console.error(
+              `Failed to remove subscriber ${subscriber.email} from Resend:`,
+              resendError
+            );
+          }
+        }
+      });
+
+      await Promise.allSettled(resendDeletions);
+
+      // Delete from database
+      await ctx.db
+        .delete(newsletterSubscribers)
+        .where(inArray(newsletterSubscribers.id, input.ids));
+
+      return {
+        deleted: subscribers.length,
+        subscribers,
+      };
     }),
   updateOne: baseProcedure
     .input(

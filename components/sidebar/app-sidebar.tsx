@@ -39,13 +39,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <Image
                 src="/logo.jpg"
                 alt="Luminix Studio"
-                width={32}
-                height={32}
+                width={48}
+                height={48}
                 className="rounded-md"
               />
-              <span className="text-base font-semibold">
-                Luminix Newsletter
-              </span>
+              <span className="text-base font-semibold">Luminix</span>
             </Link>
           </SidebarMenuItem>
         </SidebarMenu>

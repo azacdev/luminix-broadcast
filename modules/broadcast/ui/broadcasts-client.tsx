@@ -1,25 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import {
-  Plus,
-  Search,
-  MoreHorizontal,
-  Trash2,
-  Send,
-  Calendar,
-  Eye,
-  Edit,
-  Mail,
-  RotateCcw,
-} from "lucide-react";
 import Link from "next/link";
+import { useState, useEffect, useMemo } from "react";
+import { Plus, Search, Mail, Trash2 } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useRouter, useSearchParams } from "next/navigation";
 
+import { toast } from "sonner";
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -28,70 +18,127 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SendBroadcastModal } from "./send-broadcast-modal";
-import { ResendBroadcastModal } from "./resend-broadcast-modal";
-import { DeleteBroadcastModal } from "./delete-broadcast-modal";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { BroadcastsDataTable } from "./broadcasts-data-table";
+import { broadcastsColumns } from "./broadcasts-columns";
+import { BroadcastsTableSkeleton } from "./broadcasts-table-skeleton";
 
-export function BroadcastsClient() {
+interface BroadcastsClientProps {
+  initialPage?: number;
+  initialPageSize?: number;
+}
+
+export function BroadcastsClient({
+  initialPage = 1,
+  initialPageSize = 10,
+}: BroadcastsClientProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [page, setPage] = useState(initialPage);
+  const [pageSize, setPageSize] = useState(initialPageSize);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [rowSelection, setRowSelection] = useState({});
+
   const trpc = useTRPC();
 
-  const { data: broadcasts = [], refetch } = useQuery(
-    trpc.broadcasts.getMany.queryOptions()
+  // Update URL when page or pageSize changes
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (page !== 1) {
+      params.set("page", page.toString());
+    } else {
+      params.delete("page");
+    }
+
+    if (pageSize !== 10) {
+      params.set("limit", pageSize.toString());
+    } else {
+      params.delete("limit");
+    }
+
+    const newUrl = params.toString()
+      ? `?${params.toString()}`
+      : window.location.pathname;
+
+    router.replace(newUrl, { scroll: false });
+  }, [page, pageSize, router, searchParams]);
+
+  const { data, refetch, isLoading } = useQuery(
+    trpc.broadcasts.getMany.queryOptions({
+      page,
+      limit: pageSize,
+    })
   );
 
-  const filteredBroadcasts = broadcasts.filter((broadcast) => {
-    const title = broadcast.title || "";
-    const subject = broadcast.subject || "";
-    const matchesSearch =
-      title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      subject.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus =
-      filterStatus === "all" || broadcast.status === filterStatus;
+  const deleteMany = useMutation(
+    trpc.broadcasts.deleteMany.mutationOptions({
+      onSuccess: (result) => {
+        toast.success(`Successfully deleted ${result.deleted} broadcast(s)`);
+        setShowDeleteDialog(false);
+        setRowSelection({});
+        refetch();
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to delete broadcasts");
+      },
+    })
+  );
 
-    return matchesSearch && matchesStatus;
-  });
+  const broadcasts = data?.broadcasts || [];
+  const totalPages = data?.totalPages || 1;
+  const total = data?.total || 0;
 
-  const getStatusBadge = (status: string) => {
-    const colors = {
-      draft: "bg-gray-100 text-gray-800",
-      scheduled: "bg-green-100 text-blue-800",
-      sent: "bg-green-100 text-green-800",
-      failed: "bg-red-100 text-red-800",
-    };
-    return (
-      <Badge
-        variant="outline"
-        className={
-          colors[status as keyof typeof colors] || "bg-gray-100 text-gray-800"
-        }
-      >
-        {status.toUpperCase()}
-      </Badge>
-    );
+  // Memoize filtered broadcasts
+  const filteredBroadcasts = useMemo(() => {
+    return broadcasts.filter((broadcast) => {
+      const title = broadcast.title || "";
+      const subject = broadcast.subject || "";
+      const matchesSearch =
+        title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        subject.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus =
+        filterStatus === "all" || broadcast.status === filterStatus;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [broadcasts, searchTerm, filterStatus]);
+
+  // Get selected broadcast IDs from rowSelection state
+  const selectedIds = useMemo(() => {
+    return Object.keys(rowSelection)
+      .filter((key) => rowSelection[key as keyof typeof rowSelection])
+      .map((index) => filteredBroadcasts[parseInt(index)]?.id)
+      .filter(Boolean);
+  }, [rowSelection, filteredBroadcasts]);
+
+  const handleBulkDelete = () => {
+    if (selectedIds.length === 0) {
+      toast.error("Please select at least one broadcast to delete");
+      return;
+    }
+    setShowDeleteDialog(true);
+  };
+
+  const confirmBulkDelete = () => {
+    if (selectedIds.length === 0) return;
+    deleteMany.mutate({ ids: selectedIds });
   };
 
   return (
@@ -120,17 +167,39 @@ export function BroadcastsClient() {
             </SelectContent>
           </Select>
         </div>
+        <Link href="/broadcasts/new">
+          <Button>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Broadcast
+          </Button>
+        </Link>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Broadcasts ({filteredBroadcasts.length})</CardTitle>
-          <CardDescription>
-            Manage your newsletter broadcasts and campaigns
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Broadcasts ({total})</CardTitle>
+              <CardDescription>
+                Manage your newsletter broadcasts and campaigns
+              </CardDescription>
+            </div>
+            {selectedIds.length > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBulkDelete}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete Selected ({selectedIds.length})
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
-          {filteredBroadcasts.length === 0 ? (
+          {isLoading ? (
+            <BroadcastsTableSkeleton />
+          ) : filteredBroadcasts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <div className="rounded-full bg-muted p-3 mb-4">
                 <Mail className="h-6 w-6 text-muted-foreground" />
@@ -155,132 +224,53 @@ export function BroadcastsClient() {
               )}
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Recipients</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredBroadcasts.map((broadcast) => (
-                  <TableRow key={broadcast.id}>
-                    <TableCell className="font-medium">
-                      {broadcast.title}
-                    </TableCell>
-                    <TableCell>{broadcast.subject}</TableCell>
-                    <TableCell>{getStatusBadge(broadcast.status)}</TableCell>
-                    <TableCell>{broadcast.recipient_count || 0}</TableCell>
-                    {/* <TableCell>{broadcast.created_at}</TableCell> */}
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem asChild>
-                            <Link
-                              href={`/dashboard/newsletter/broadcasts/${broadcast.id}/preview`}
-                            >
-                              <Eye className="mr-2 h-4 w-4" />
-                              Preview
-                            </Link>
-                          </DropdownMenuItem>
-
-                          {/* Edit - only for draft and failed */}
-                          {(broadcast.status === "draft" ||
-                            broadcast.status === "failed") && (
-                            <DropdownMenuItem asChild>
-                              <Link
-                                href={`/dashboard/newsletter/broadcasts/${broadcast.id}/edit`}
-                              >
-                                <Edit className="mr-2 h-4 w-4" />
-                                Edit
-                              </Link>
-                            </DropdownMenuItem>
-                          )}
-
-                          <DropdownMenuSeparator />
-
-                          {/* Send/Schedule - only for draft and failed */}
-                          {(broadcast.status === "draft" ||
-                            broadcast.status === "failed") && (
-                            <>
-                              <SendBroadcastModal
-                                broadcast={broadcast}
-                                onSent={() => refetch()}
-                              >
-                                <DropdownMenuItem
-                                  onSelect={(e) => e.preventDefault()}
-                                >
-                                  <Send className="mr-2 h-4 w-4" />
-                                  Send Now
-                                </DropdownMenuItem>
-                              </SendBroadcastModal>
-
-                              {broadcast.status === "draft" && (
-                                <SendBroadcastModal
-                                  broadcast={broadcast}
-                                  onSent={() => refetch()}
-                                  allowScheduling
-                                >
-                                  <DropdownMenuItem
-                                    onSelect={(e) => e.preventDefault()}
-                                  >
-                                    <Calendar className="mr-2 h-4 w-4" />
-                                    Schedule
-                                  </DropdownMenuItem>
-                                </SendBroadcastModal>
-                              )}
-                            </>
-                          )}
-
-                          {/* Resend - only for sent broadcasts */}
-                          {broadcast.status === "sent" && (
-                            <ResendBroadcastModal
-                              broadcast={broadcast}
-                              onResent={() => refetch()}
-                            >
-                              <DropdownMenuItem
-                                onSelect={(e) => e.preventDefault()}
-                              >
-                                <RotateCcw className="mr-2 h-4 w-4" />
-                                Resend
-                              </DropdownMenuItem>
-                            </ResendBroadcastModal>
-                          )}
-
-                          <DropdownMenuSeparator />
-
-                          {/* Delete */}
-                          <DeleteBroadcastModal
-                            broadcast={broadcast}
-                            onDeleted={() => refetch()}
-                          >
-                            <DropdownMenuItem
-                              onSelect={(e) => e.preventDefault()}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DeleteBroadcastModal>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <BroadcastsDataTable
+              columns={broadcastsColumns}
+              data={filteredBroadcasts}
+              pageCount={totalPages}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+              rowSelection={rowSelection}
+              onRowSelectionChange={setRowSelection}
+            />
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Broadcasts</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {selectedIds.length} broadcast(s)?
+              This action cannot be undone and will remove them from both your
+              database and Resend.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeleteDialog(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmBulkDelete}
+              disabled={deleteMany.isPending}
+            >
+              {deleteMany.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

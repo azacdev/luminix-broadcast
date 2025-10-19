@@ -84,13 +84,13 @@ export default function BroadcastPreviewPage({
         {/* Back Navigation and Edit Button */}
         <div className="pb-8 flex items-center justify-between">
           <Link
-            href="/dashboard/newsletter/broadcasts"
+            href="/broadcasts"
             className="text-primary font-medium inline-flex gap-1 cursor-pointer hover:underline"
           >
             <p className="-mt-0.5">← </p> Back to Broadcasts
           </Link>
           <Button asChild>
-            <Link href={`/dashboard/newsletter/broadcasts/${id}/edit`}>
+            <Link href={`/broadcasts/${id}/edit`}>
               <Edit className="mr-2 h-4 w-4" />
               Edit Broadcast
             </Link>
