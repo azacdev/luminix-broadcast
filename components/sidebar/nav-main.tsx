@@ -35,7 +35,7 @@ export function NavMain({
                 tooltip={item.title}
                 className="py-2"
                 asChild
-                isActive={pathname === item.url}
+                isActive={pathname.startsWith(item.url)}
               >
                 <Link href={item.url}>
                   {item.icon && <item.icon className="size-5" />}

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { User, Save, Eye, Send, Clock, FileText, Mail } from "lucide-react";
+import { Save, Eye, Send, Clock, FileText, Mail } from "lucide-react";
 
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,7 @@ import { useTRPC } from "@/trpc/client";
 import { useMutation } from "@tanstack/react-query";
 
 import RichTextEditor from "./rich-text-editor";
+import { EmailPreview } from "./email-preview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -363,67 +364,12 @@ export function CreateBroadcastForm() {
         <div className="lg:col-span-1">
           <Card className="p-6 sticky top-6">
             <h3 className="text-lg font-semibold mb-4">Email Preview</h3>
-            <div className="border bg-gray-50 min-h-[400px] overflow-auto">
-              <div className="bg-white m-2 shadow-sm">
-                <div className="bg-[hsl(155,100%,20%)] px-6 py-7 text-center">
-                  <div className="w-[135px] h-[37.5px] bg-white/20 mx-auto mb-[6px]"></div>
-                  <p className="text-white text-base m-0 opacity-90">
-                    Newsletter Update
-                  </p>
-                  <div className="w-[60px] h-[3px] bg-white opacity-30 mx-auto mt-3"></div>
-                </div>
-
-                <div className="px-6 py-7">
-                  <h1 className="text-[hsl(155,25%,15%)] text-[26px] font-bold m-0 mb-6 text-center">
-                    {currentTitle || "Your broadcast title will appear here"}
-                  </h1>
-
-                  <div className="bg-white p-6 border-2 border-[hsl(120,15%,88%)]">
-                    <div
-                      className="text-gray-700 text-[15px] leading-[1.6] m-0"
-                      dangerouslySetInnerHTML={{
-                        __html:
-                          currentContent ||
-                          "<p>Your content will appear here...</p>",
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <hr className="border-[hsl(120,15%,88%)] my-6" />
-
-                <div className="bg-[hsl(155,100%,20%)] px-6 py-6 text-center">
-                  <p className="text-white text-[13px] m-0 mb-3 opacity-90">
-                    Thank you for subscribing to the Northwest Governors Forum
-                    newsletter.
-                  </p>
-                  <div className="border-t border-white/20 pt-4">
-                    <p className="text-white text-[11px] m-0 mb-[6px] opacity-80">
-                      © {new Date().getFullYear()} Northwest Governors Forum.
-                      All rights reserved.
-                    </p>
-                    <p className="text-white text-[11px] m-0 mb-[6px] opacity-70">
-                      Northwest Region, Nigeria
-                    </p>
-                    <p className="text-white text-[10px] m-0 opacity-60">
-                      <a href="#" className="underline">
-                        Unsubscribe
-                      </a>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 text-xs text-muted-foreground">
-              <p>
-                <strong>From:</strong> {currentFromEmail}
-              </p>
-              <p>
-                <strong>Subject:</strong>{" "}
-                {currentSubject || "Your subject line"}
-              </p>
-            </div>
+            <EmailPreview
+              title={currentTitle || ""}
+              content={currentContent || ""}
+              subject={currentSubject || ""}
+              fromEmail={currentFromEmail || ""}
+            />
           </Card>
         </div>
       )}

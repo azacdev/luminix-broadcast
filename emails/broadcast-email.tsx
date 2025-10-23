@@ -71,16 +71,6 @@ const BroadcastEmail = ({ title, content, previewText }: BroadcastProps) => (
 
         <Text
           style={{
-            margin: "0 0 8px 0",
-            fontSize: "14px",
-            color: "#71717a",
-          }}
-        >
-          Thank you for subscribing to our newsletter.
-        </Text>
-
-        <Text
-          style={{
             margin: "0",
             fontSize: "12px",
             color: "#52525b",
