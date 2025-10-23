@@ -81,6 +81,8 @@ export function ResendBroadcastModal({
       return;
     }
 
+    console.log("Resend broadcast", broadcast);
+
     try {
       const scheduledTime = getScheduledTime();
 
@@ -90,7 +92,7 @@ export function ResendBroadcastModal({
         subject: broadcast.subject,
         content: broadcast.content,
         fromEmail: broadcast.from_email,
-        scheduledAt: scheduledTime || "",
+        scheduledAt: scheduledTime,
       });
 
       // Send the broadcast
