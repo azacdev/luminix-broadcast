@@ -17,7 +17,7 @@ export const broadcasts = pgTable("broadcasts", {
   title: text("title").notNull(),
   subject: text("subject").notNull(),
   content: text("content").notNull(),
-  from_email: text("from_email").notNull().default("newsletter@azacdev.com"),
+  from_email: text("from_email").notNull(),
   audience_id: text("audience_id").notNull(),
   resend_broadcast_id: text("resend_broadcast_id"),
   status: text("status").notNull().default("draft"),

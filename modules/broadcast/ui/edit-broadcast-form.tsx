@@ -13,6 +13,7 @@ import { useTRPC } from "@/trpc/client";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import RichTextEditor from "./rich-text-editor";
+import { EmailPreview } from "./email-preview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -23,15 +24,26 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+
+const RESEND_DOMAIN =
+  process.env.NEXT_PUBLIC_RESEND_DOMAIN_EMAIL || "luminixstudio.online";
 
 const broadcastFormSchema = z.object({
   title: z.string().optional(),
   subject: z.string().optional(),
   content: z.string().optional(),
-  fromEmail: z.string().optional(),
+  fromEmail: z
+    .string()
+    .email("Must be a valid email address")
+    .refine(
+      (email) => email.endsWith(`@${RESEND_DOMAIN}`),
+      `Email must use the domain @${RESEND_DOMAIN}`
+    )
+    .optional(),
   scheduledAt: z.date().optional(),
 });
 
@@ -45,7 +57,13 @@ const publishedBroadcastSchema = z.object({
     .min(1, "Subject is required")
     .max(200, "Subject must be less than 200 characters"),
   content: z.string().min(1, "Content is required"),
-  fromEmail: z.string().email("Valid email is required"),
+  fromEmail: z
+    .string()
+    .email("Must be a valid email address")
+    .refine(
+      (email) => email.endsWith(`@${RESEND_DOMAIN}`),
+      `Email must use the domain @${RESEND_DOMAIN}`
+    ),
 });
 
 type BroadcastFormData = z.infer<typeof broadcastFormSchema>;
@@ -77,7 +95,7 @@ export function EditBroadcastForm({ broadcastId }: EditBroadcastFormProps) {
       title: "",
       subject: "",
       content: "",
-      fromEmail: "newsletter@azacdev.com",
+      fromEmail: `contact@${RESEND_DOMAIN}`,
       scheduledAt: new Date(),
     },
   });
@@ -88,7 +106,7 @@ export function EditBroadcastForm({ broadcastId }: EditBroadcastFormProps) {
         title: broadcast.title || "",
         subject: broadcast.subject || "",
         content: broadcast.content || "",
-        fromEmail: broadcast.from_email || "newsletter@azacdev.com",
+        fromEmail: broadcast.from_email || `contact@${RESEND_DOMAIN}`,
       });
     }
   }, [broadcast, form]);
@@ -101,20 +119,37 @@ export function EditBroadcastForm({ broadcastId }: EditBroadcastFormProps) {
     try {
       const formData = form.getValues();
 
-      const payload = {
+      // Validate fromEmail for drafts too
+      const fromEmail =
+        formData.fromEmail?.trim() || `contact@${RESEND_DOMAIN}`;
+      if (!fromEmail.endsWith(`@${RESEND_DOMAIN}`)) {
+        toast.error(`From email must use the domain @${RESEND_DOMAIN}`);
+        return;
+      }
+
+      const payload: any = {
         id: broadcastId,
         title: formData.title?.trim() || "Untitled Draft",
         subject: formData.subject?.trim() || "No Subject",
         content: formData.content?.trim() || "",
-        fromEmail: formData.fromEmail?.trim() || "newsletter@azacdev.com",
+        fromEmail: fromEmail,
       };
 
       await updateBroadcast.mutateAsync(payload);
       toast.success("Draft saved successfully");
-      router.push("/dashboard/newsletter/broadcasts");
-    } catch (error) {
+      router.push("/broadcasts");
+    } catch (error: any) {
       console.error("Error saving draft:", error);
-      toast.error("Failed to save draft");
+
+      // Handle Resend-specific errors
+      const errorMessage = error?.message || "Failed to save draft";
+      if (errorMessage.includes("domain") || errorMessage.includes("verify")) {
+        toast.error(
+          `Resend Error: ${errorMessage}. Please verify your domain in Resend.`
+        );
+      } else {
+        toast.error(errorMessage);
+      }
     }
   };
 
@@ -179,10 +214,23 @@ export function EditBroadcastForm({ broadcastId }: EditBroadcastFormProps) {
           ? "Broadcast sent successfully!"
           : "Broadcast scheduled successfully!";
       toast.success(message);
-      router.push("/dashboard/newsletter/broadcasts");
-    } catch (error) {
+      router.push("/broadcasts");
+    } catch (error: any) {
       console.error("Error sending broadcast:", error);
-      toast.error("Failed to send broadcast");
+
+      // Handle Resend-specific errors
+      const errorMessage = error?.message || "Failed to send broadcast";
+      if (errorMessage.includes("domain") || errorMessage.includes("verify")) {
+        toast.error(
+          `Resend Error: ${errorMessage}. Please verify your domain in Resend.`
+        );
+      } else if (errorMessage.includes("audience")) {
+        toast.error(
+          `Resend Error: ${errorMessage}. Please check your audience configuration.`
+        );
+      } else {
+        toast.error(errorMessage);
+      }
     }
   };
 
@@ -220,15 +268,15 @@ export function EditBroadcastForm({ broadcastId }: EditBroadcastFormProps) {
   const isSaving = updateBroadcast.isPending;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
       {/* Main Form */}
-      <div className="lg:col-span-2 space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="lg:col-span-2 space-y-4 lg:space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center space-x-2">
             <FileText className="h-4 w-4 text-muted-foreground" />
             <span
               className={cn(
-                "text-sm px-2 py-1",
+                "text-xs sm:text-sm px-2 py-1",
                 broadcast.status === "draft" && "bg-yellow-100 text-yellow-800",
                 broadcast.status === "sent" && "bg-green-100 text-green-800",
                 broadcast.status === "scheduled" &&
@@ -244,15 +292,19 @@ export function EditBroadcastForm({ broadcastId }: EditBroadcastFormProps) {
             variant="outline"
             onClick={() => setShowPreview(!showPreview)}
             disabled={!currentTitle && !currentContent}
+            className="w-full sm:w-auto"
           >
             <Eye className="mr-2 h-4 w-4" />
             {showPreview ? "Hide Preview" : "Show Preview"}
           </Button>
         </div>
 
-        <Card className="p-8 space-y-8">
+        <Card className="p-4 sm:p-6 lg:p-8 space-y-6 lg:space-y-8">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            <form
+              onSubmit={form.handleSubmit(onSubmit)}
+              className="space-y-6 lg:space-y-8"
+            >
               <FormField
                 control={form.control}
                 name="title"
@@ -264,7 +316,7 @@ export function EditBroadcastForm({ broadcastId }: EditBroadcastFormProps) {
                         {...field}
                         onChange={(e) => handleTitleChange(e.target.value)}
                         className={cn(
-                          "!text-2xl font-bold border-t-0 border-l-0 border-r-0 px-0 py-2 placeholder:text-muted-foreground/50 focus-visible:ring-0 bg-transparent h-auto",
+                          "!text-xl sm:!text-2xl font-bold border-t-0 border-l-0 border-r-0 px-0 py-2 placeholder:text-muted-foreground/50 focus-visible:ring-0 bg-transparent h-auto",
                           "border-b border-input shadow-none"
                         )}
                       />
@@ -274,7 +326,7 @@ export function EditBroadcastForm({ broadcastId }: EditBroadcastFormProps) {
                 )}
               />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4 border-y border-border">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4 border-b border-border items-start">
                 <FormField
                   control={form.control}
                   name="subject"
@@ -287,6 +339,29 @@ export function EditBroadcastForm({ broadcastId }: EditBroadcastFormProps) {
                       <FormControl>
                         <Input placeholder="Email subject line" {...field} />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="fromEmail"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium flex items-center gap-2">
+                        <Mail className="w-4 h-4" />
+                        From Email
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder={`sender@${RESEND_DOMAIN}`}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        Must use @{RESEND_DOMAIN}
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -313,8 +388,8 @@ export function EditBroadcastForm({ broadcastId }: EditBroadcastFormProps) {
               />
 
               {canSend && (
-                <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-4">
+                <Card className="p-4 sm:p-6">
+                  <h3 className="text-base sm:text-lg font-semibold mb-4">
                     Scheduling Options
                   </h3>
                   <RadioGroup
@@ -365,22 +440,23 @@ export function EditBroadcastForm({ broadcastId }: EditBroadcastFormProps) {
                 </Card>
               )}
 
-              <div className="flex justify-between items-center pt-6 border-t">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pt-6 border-t">
                 <Button
                   variant="outline"
                   type="button"
                   onClick={() => router.back()}
+                  className="w-full sm:w-auto order-2 sm:order-1"
                 >
                   Cancel
                 </Button>
 
-                <div className="flex items-center space-x-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 order-1 sm:order-2">
                   <Button
                     type="button"
                     variant="outline"
                     onClick={saveDraft}
                     disabled={isSaving || isLoading}
-                    className="flex items-center space-x-2 bg-transparent"
+                    className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-transparent"
                   >
                     {isSaving ? (
                       <Clock className="w-4 h-4 animate-spin" />
@@ -394,7 +470,7 @@ export function EditBroadcastForm({ broadcastId }: EditBroadcastFormProps) {
                     <Button
                       type="submit"
                       disabled={isLoading}
-                      className="flex items-center space-x-2"
+                      className="w-full sm:w-auto flex items-center justify-center space-x-2"
                     >
                       {isLoading ? (
                         <Clock className="w-4 h-4 animate-spin" />
@@ -422,69 +498,16 @@ export function EditBroadcastForm({ broadcastId }: EditBroadcastFormProps) {
       {/* Preview Panel */}
       {showPreview && (
         <div className="lg:col-span-1">
-          <Card className="p-6 sticky top-6">
-            <h3 className="text-lg font-semibold mb-4">Email Preview</h3>
-            <div className="border bg-gray-50 min-h-[400px] overflow-auto">
-              <div className="bg-white m-2 shadow-sm">
-                <div className="bg-[hsl(155,100%,20%)] px-6 py-7 text-center">
-                  <div className="w-[135px] h-[37.5px] bg-white/20 mx-auto mb-[6px]"></div>
-                  <p className="text-white text-base m-0 opacity-90">
-                    Newsletter Update
-                  </p>
-                  <div className="w-[60px] h-[3px] bg-white opacity-30 mx-auto mt-3"></div>
-                </div>
-
-                <div className="px-6 py-7">
-                  <h1 className="text-[hsl(155,25%,15%)] text-[26px] font-bold m-0 mb-6 text-center">
-                    {currentTitle || "Your broadcast title will appear here"}
-                  </h1>
-
-                  <div className="bg-white p-6 border-2 border-[hsl(120,15%,88%)]">
-                    <div
-                      className="text-gray-700 text-[15px] leading-[1.6] m-0"
-                      dangerouslySetInnerHTML={{
-                        __html:
-                          currentContent ||
-                          "<p>Your content will appear here...</p>",
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <hr className="border-[hsl(120,15%,88%)] my-6" />
-
-                <div className="bg-[hsl(155,100%,20%)] px-6 py-6 text-center">
-                  <p className="text-white text-[13px] m-0 mb-3 opacity-90">
-                    Thank you for subscribing to the Northwest Governors Forum
-                    newsletter.
-                  </p>
-                  <div className="border-t border-white/20 pt-4">
-                    <p className="text-white text-[11px] m-0 mb-[6px] opacity-80">
-                      © {new Date().getFullYear()} Northwest Governors Forum.
-                      All rights reserved.
-                    </p>
-                    <p className="text-white text-[11px] m-0 mb-[6px] opacity-70">
-                      Northwest Region, Nigeria
-                    </p>
-                    <p className="text-white text-[10px] m-0 opacity-60">
-                      <a href="#" className="underline">
-                        Unsubscribe
-                      </a>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 text-xs text-muted-foreground">
-              <p>
-                <strong>From:</strong> {currentFromEmail}
-              </p>
-              <p>
-                <strong>Subject:</strong>{" "}
-                {currentSubject || "Your subject line"}
-              </p>
-            </div>
+          <Card className="p-4 sm:p-6 lg:sticky lg:top-6">
+            <h3 className="text-base sm:text-lg font-semibold mb-4">
+              Email Preview
+            </h3>
+            <EmailPreview
+              title={currentTitle || ""}
+              content={currentContent || ""}
+              subject={currentSubject || ""}
+              fromEmail={currentFromEmail || ""}
+            />
           </Card>
         </div>
       )}

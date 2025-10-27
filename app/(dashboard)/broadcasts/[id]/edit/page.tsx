@@ -21,7 +21,7 @@ export default function EditBroadcastPage({ params }: EditBroadcastPageProps) {
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
       <div className="pb-8 flex items-center justify-between">
         <Link
-          href="/dashboard/newsletter/broadcasts"
+          href="/broadcasts"
           className="text-primary font-medium inline-flex gap-1 cursor-pointer hover:underline"
         >
           <p className="-mt-0.5">← </p> Back to Broadcasts
