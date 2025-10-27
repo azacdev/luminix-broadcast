@@ -6,6 +6,7 @@ import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
 import { getQueryClient, trpc } from "@/trpc/server";
 import { Button } from "@/components/ui/button";
 import { BroadcastsClient } from "@/modules/broadcast/ui/broadcasts-client";
+import { BroadcastsPageSkeleton } from "@/modules/broadcast/ui/broadcasts-page-skeleton";
 
 export default async function BroadcastsPage({
   searchParams,
@@ -34,7 +35,7 @@ export default async function BroadcastsPage({
           </h2>
         </div>
         <HydrationBoundary state={dehydrate(queryClient)}>
-          <Suspense fallback={<div>Loading broadcasts...</div>}>
+          <Suspense fallback={<BroadcastsPageSkeleton />}>
             <BroadcastsClient initialPage={page} initialPageSize={limit} />
           </Suspense>
         </HydrationBoundary>

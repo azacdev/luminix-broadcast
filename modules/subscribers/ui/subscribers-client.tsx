@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Search, Upload, Trash2 } from "lucide-react";
+import { Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -31,7 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { BulkImportModal } from "./bulk-import-modal";
+import { ImportDropdown } from "./import-dropdown";
 import { AddSubscriberModal } from "./add-subscriber-modal";
 import { SubscribersDataTable } from "./subscribers-data-table";
 import { subscribersColumns } from "./subscribers-columns";
@@ -124,7 +124,7 @@ export function SubscribersClient({
   const selectedIds = useMemo(() => {
     return Object.keys(rowSelection)
       .filter((key) => rowSelection[key as keyof typeof rowSelection])
-      .map((index) => filteredSubscribers[parseInt(index)]?.id)
+      .map((index) => filteredSubscribers[Number.parseInt(index)]?.id)
       .filter(Boolean);
   }, [rowSelection, filteredSubscribers]);
 
@@ -166,12 +166,7 @@ export function SubscribersClient({
           </Select>
         </div>
         <div className="flex gap-2">
-          <BulkImportModal onImportComplete={() => refetch()}>
-            <Button variant="outline">
-              <Upload className="h-4 w-4 mr-2" />
-              Bulk Import
-            </Button>
-          </BulkImportModal>
+          <ImportDropdown onImportComplete={() => refetch()} />
           <AddSubscriberModal onSubscriberAdded={() => refetch()}>
             <Button>
               <Plus className="h-4 w-4 mr-2" />

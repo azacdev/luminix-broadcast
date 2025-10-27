@@ -132,6 +132,7 @@ export const broadcastsRouter = createTRPCRouter({
       const subject = input.subject;
       const content = input.content;
       const scheduledAt = input.scheduledAt;
+      const fromEmail = input.fromEmail;
 
       if (!title || !subject || !content) {
         throw new TRPCError({
@@ -143,7 +144,7 @@ export const broadcastsRouter = createTRPCRouter({
       // Create broadcast in Resend
       const resendBroadcast = await resend.broadcasts.create({
         audienceId: AUDIENCE_ID!,
-        from: "contact@luminixstudio.online",
+        from: fromEmail,
         subject,
         react: BroadcastEmail({
           title,
@@ -175,7 +176,7 @@ export const broadcastsRouter = createTRPCRouter({
           title,
           subject,
           content,
-          from_email: "contact@luminixstudio.online",
+          from_email: fromEmail,
           audience_id: AUDIENCE_ID!,
           resend_broadcast_id: resendBroadcast.data.id,
           status: scheduledAt ? "scheduled" : "draft",
