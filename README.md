@@ -1,10 +1,10 @@
-# Luminix Newsletter
+# Luminix Broadcast
 
-This README provides a comprehensive overview of the Luminix Newsletter project, including its features, tech stack, setup instructions, and project structure. Feel free to customize it further based on your specific needs.
+This README provides a comprehensive overview of the Luminix Broadcast project, including its features, tech stack, setup instructions, and project structure. Feel free to customize it further based on your specific needs.
 
 ## Features
 
-- **Responsive Design:** The newsletter is fully responsive and looks great on all devices.
+- **Responsive Design:** The broadcast is fully responsive and looks great on all devices.
 - **Dark Mode:** Supports dark mode for better readability in low-light conditions.
 - **High Performance:** Built with performance in mind, ensuring fast load times.
 - **SEO Optimized:** Follows best practices for SEO to help you rank better in search engines.
@@ -23,13 +23,13 @@ To get started with the project, follow these steps:
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/yourusername/luminix-newsletter.git
+   git clone https://github.com/yourusername/luminix-broadcast.git
    ```
 
 2. Navigate to the project directory:
 
    ```bash
-   cd luminix-newsletter
+   cd luminix-broadcast
    ```
 
 3. Install the dependencies:
@@ -59,7 +59,7 @@ To get started with the project, follow these steps:
 ## Project Structure
 
 ```
-luminix-newsletter/
+luminix-broadcast/
 ├── app/
 │   ├── api/
 │   ├── components/
