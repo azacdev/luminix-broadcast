@@ -20,6 +20,7 @@ A modern, full-featured email broadcast management system built with Next.js, tR
 - **[Drizzle ORM](https://orm.drizzle.team/)** - TypeScript ORM for SQL databases
 - **[PostgreSQL](https://www.postgresql.org/)** - Relational database
 - **[Resend](https://resend.com/)** - Modern email API for developers
+- **[React Email](https://react.email/)** - Build and send emails using React components
 - **[Tailwind CSS](https://tailwindcss.com/)** - Utility-first CSS framework
 - **[shadcn/ui](https://ui.shadcn.com/)** - Re-usable component library
 - **[React Hook Form](https://react-hook-form.com/)** - Performant form validation
@@ -37,7 +38,7 @@ Before you begin, ensure you have the following installed:
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/yourusername/luminix-broadcast.git
+git clone https://github.com/azacdev/luminix-broadcast.git
 cd luminix-broadcast
 ```
 
@@ -227,8 +228,6 @@ The easiest way to deploy this application:
 2. Import your repository in [Vercel](https://vercel.com)
 3. Add your environment variables in Vercel's project settings
 4. Deploy!
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yourusername/luminix-broadcast)
 
 ### Environment Variables for Production
 
