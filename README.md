@@ -36,14 +36,12 @@ Before you begin, ensure you have the following installed:
 ## Getting Started
 
 ### 1. Clone the Repository
-
 ```bash
 git clone https://github.com/yourusername/luminix-broadcast.git
 cd luminix-broadcast
 ```
 
 ### 2. Install Dependencies
-
 ```bash
 pnpm install
 # or
@@ -69,13 +67,11 @@ This project uses [Neon](https://neon.tech/) - a serverless PostgreSQL database.
 ### 4. Configure Environment Variables
 
 Create a `.env` file in the root directory by copying the example:
-
 ```bash
 cp .env.example .env
 ```
 
 Update the `.env` file with your configuration:
-
 ```env
 # Database
 DATABASE_URL="postgresql://user:password@localhost:5432/luminix_broadcast"
@@ -134,13 +130,11 @@ NEXT_PUBLIC_RESEND_DOMAIN_EMAIL=noreply@yourdomain.com
 #### Step 5: Set Your Sender Email
 
 In your `.env` file, set `NEXT_PUBLIC_RESEND_DOMAIN_EMAIL` to an email address using your verified domain:
-
 ```env
 NEXT_PUBLIC_RESEND_DOMAIN_EMAIL=noreply@yourdomain.com
 ```
 
 ### 6. Run Database Migrations
-
 ```bash
 pnpm db:push
 # or
@@ -148,7 +142,6 @@ npm run db:push
 ```
 
 ### 7. Start the Development Server
-
 ```bash
 pnpm dev
 # or
@@ -158,7 +151,6 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000) in your browser to see the application.
 
 ## Project Structure
-
 ```
 luminix-broadcast/
 ├── app/
