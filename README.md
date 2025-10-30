@@ -284,5 +284,3 @@ If you have any questions or run into issues, please:
 - [tRPC](https://trpc.io/) for type-safe APIs
 
 ---
-
-Built with ❤️ using Next.js and Resend
