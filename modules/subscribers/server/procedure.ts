@@ -10,6 +10,55 @@ import { baseProcedure, createTRPCRouter } from "@/trpc/init";
 const resend = new Resend(process.env.RESEND_API_KEY);
 const AUDIENCE_ID = process.env.RESEND_AUDIENCE_ID;
 
+// Helper function to add delay between requests
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Helper function to delete contacts from Resend with rate limiting
+async function deleteFromResendWithRateLimit(
+  subscribers: Array<{
+    id: string;
+    email: string | null;
+    resend_contact_id: string | null;
+  }>
+) {
+  const results = [];
+
+  // Process deletions sequentially with 500ms delay (2 per second)
+  for (const subscriber of subscribers) {
+    if (subscriber.resend_contact_id || subscriber.email) {
+      try {
+        if (subscriber.resend_contact_id) {
+          await resend.contacts.remove({
+            id: subscriber.resend_contact_id,
+            audienceId: AUDIENCE_ID!,
+          });
+        } else if (subscriber.email) {
+          await resend.contacts.remove({
+            email: subscriber.email,
+            audienceId: AUDIENCE_ID!,
+          });
+        }
+        results.push({ success: true, email: subscriber.email });
+      } catch (resendError) {
+        console.error(
+          `Failed to remove subscriber ${subscriber.email} from Resend:`,
+          resendError
+        );
+        results.push({
+          success: false,
+          email: subscriber.email,
+          error: resendError,
+        });
+      }
+
+      // Wait 500ms between requests to stay under 2 req/sec limit
+      await delay(500);
+    }
+  }
+
+  return results;
+}
+
 export const subscribersRouter = createTRPCRouter({
   getMany: baseProcedure
     .input(
@@ -172,31 +221,17 @@ export const subscribersRouter = createTRPCRouter({
         });
       }
 
-      // Delete from Resend in parallel
-      const resendDeletions = subscribers.map(async (subscriber) => {
-        if (subscriber.resend_contact_id || subscriber.email) {
-          try {
-            if (subscriber.resend_contact_id) {
-              await resend.contacts.remove({
-                id: subscriber.resend_contact_id,
-                audienceId: process.env.RESEND_AUDIENCE_ID!,
-              });
-            } else if (subscriber.email) {
-              await resend.contacts.remove({
-                email: subscriber.email,
-                audienceId: process.env.RESEND_AUDIENCE_ID!,
-              });
-            }
-          } catch (resendError) {
-            console.error(
-              `Failed to remove subscriber ${subscriber.email} from Resend:`,
-              resendError
-            );
-          }
-        }
-      });
+      // Delete from Resend sequentially with rate limiting
+      const resendResults = await deleteFromResendWithRateLimit(subscribers);
 
-      await Promise.allSettled(resendDeletions);
+      // Log any failures
+      const failures = resendResults.filter((r) => !r.success);
+      if (failures.length > 0) {
+        console.warn(
+          `Failed to delete ${failures.length} contacts from Resend:`,
+          failures
+        );
+      }
 
       // Delete from database
       await ctx.db
@@ -206,6 +241,10 @@ export const subscribersRouter = createTRPCRouter({
       return {
         deleted: subscribers.length,
         subscribers,
+        resendResults: {
+          successful: resendResults.filter((r) => r.success).length,
+          failed: failures.length,
+        },
       };
     }),
   updateOne: baseProcedure

@@ -1,11 +1,11 @@
 "use client";
 
+import { Plus, Search, Trash2 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Search, Trash2 } from "lucide-react";
-import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { toast } from "sonner";
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,7 +58,6 @@ export function SubscribersClient({
 
   const trpc = useTRPC();
 
-  // Update URL when page or pageSize changes
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
 
@@ -106,7 +105,6 @@ export function SubscribersClient({
   const totalPages = data?.totalPages || 1;
   const total = data?.total || 0;
 
-  // Memoize filtered subscribers to prevent unnecessary recalculations
   const filteredSubscribers = useMemo(() => {
     return subscribers.filter((subscriber) => {
       const email = subscriber.email || "";
@@ -120,7 +118,6 @@ export function SubscribersClient({
     });
   }, [subscribers, searchTerm, filterStatus]);
 
-  // Get selected subscriber IDs from rowSelection state
   const selectedIds = useMemo(() => {
     return Object.keys(rowSelection)
       .filter((key) => rowSelection[key as keyof typeof rowSelection])
