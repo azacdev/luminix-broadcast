@@ -18,6 +18,21 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const SUBSCRIBER_CATEGORIES = [
+  { value: "general", label: "General" },
+  { value: "announcements", label: "Announcements" },
+  { value: "updates", label: "Updates" },
+  { value: "newsletters", label: "Newsletters" },
+  { value: "promotions", label: "Promotions" },
+];
 
 interface BulkImportModalProps {
   children: React.ReactNode;
@@ -30,6 +45,7 @@ export function BulkImportModal({
 }: BulkImportModalProps) {
   const [open, setOpen] = useState(false);
   const [emails, setEmails] = useState("");
+  const [category, setCategory] = useState("general");
   const [isLoading, setIsLoading] = useState(false);
   const trpc = useTRPC();
 
@@ -65,7 +81,10 @@ export function BulkImportModal({
     // Process emails sequentially
     for (const email of emailList) {
       try {
-        await createSubscriber.mutateAsync({ email });
+        await createSubscriber.mutateAsync({
+          email,
+          category: category as any,
+        });
         results.successful.push(email);
       } catch (error) {
         results.failed.push(email);
@@ -90,6 +109,7 @@ export function BulkImportModal({
     }
 
     setEmails("");
+    setCategory("general");
     setOpen(false);
     setIsLoading(false);
     onImportComplete();
@@ -108,6 +128,25 @@ export function BulkImportModal({
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="category">Assign Category</Label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger id="category">
+                  <SelectValue placeholder="Select a category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SUBSCRIBER_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                All imported subscribers will be assigned to this category
+              </p>
+            </div>
+
             <div className="grid gap-2">
               <Label htmlFor="emails">Email Addresses</Label>
               <Textarea

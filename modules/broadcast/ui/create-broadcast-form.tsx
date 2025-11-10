@@ -5,12 +5,12 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Save, Eye, Send, Clock, FileText, Mail } from "lucide-react";
+import { Save, Eye, Send, Clock, FileText, Mail, Target } from "lucide-react";
 
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useTRPC } from "@/trpc/client";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 import RichTextEditor from "./rich-text-editor";
 import { EmailPreview } from "./email-preview";
@@ -26,11 +26,28 @@ import {
   FormMessage,
   FormDescription,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 
 const RESEND_DOMAIN =
   process.env.NEXT_PUBLIC_RESEND_DOMAIN_EMAIL || "luminixstudio.online";
+
+const SUBSCRIBER_CATEGORIES = [
+  { value: "all", label: "All Subscribers" },
+  { value: "general", label: "General" },
+  { value: "announcements", label: "Announcements" },
+  { value: "updates", label: "Updates" },
+  { value: "newsletters", label: "Newsletters" },
+  { value: "promotions", label: "Promotions" },
+];
 
 const broadcastFormSchema = z.object({
   title: z.string().optional(),
@@ -44,6 +61,7 @@ const broadcastFormSchema = z.object({
       `Email must use the domain @${RESEND_DOMAIN}`
     )
     .optional(),
+  targetCategory: z.string(),
   scheduledAt: z.date().optional(),
 });
 
@@ -64,6 +82,7 @@ const publishedBroadcastSchema = z.object({
       (email) => email.endsWith(`@${RESEND_DOMAIN}`),
       `Email must use the domain @${RESEND_DOMAIN}`
     ),
+  targetCategory: z.string(),
 });
 
 type BroadcastFormData = z.infer<typeof broadcastFormSchema>;
@@ -75,8 +94,12 @@ export function CreateBroadcastForm() {
   const [showPreview, setShowPreview] = useState(false);
   const trpc = useTRPC();
 
-  const createBroadcast = useMutation(trpc.broadcasts.create.mutationOptions());
+  // Fetch category stats
+  const { data: categoryStats } = useQuery(
+    trpc.subscribers.getCategoryStats.queryOptions()
+  );
 
+  const createBroadcast = useMutation(trpc.broadcasts.create.mutationOptions());
   const sendBroadcast = useMutation(trpc.broadcasts.send.mutationOptions());
 
   const form = useForm<BroadcastFormData>({
@@ -86,6 +109,7 @@ export function CreateBroadcastForm() {
       subject: "",
       content: "",
       fromEmail: `contact@${RESEND_DOMAIN}`,
+      targetCategory: "all",
       scheduledAt: new Date(),
     },
   });
@@ -98,7 +122,6 @@ export function CreateBroadcastForm() {
     try {
       const formData = form.getValues();
 
-      // Validate fromEmail for drafts too
       const fromEmail =
         formData.fromEmail?.trim() || `contact@${RESEND_DOMAIN}`;
       if (!fromEmail.endsWith(`@${RESEND_DOMAIN}`)) {
@@ -111,6 +134,7 @@ export function CreateBroadcastForm() {
         subject: formData.subject?.trim() || "No Subject",
         content: formData.content?.trim() || "",
         fromEmail: fromEmail,
+        targetCategory: formData.targetCategory || "all",
       };
 
       await createBroadcast.mutateAsync(payload);
@@ -119,7 +143,6 @@ export function CreateBroadcastForm() {
     } catch (error: any) {
       console.error("Error saving draft:", error);
 
-      // Handle Resend-specific errors
       const errorMessage = error?.message || "Failed to save draft";
       if (errorMessage.includes("domain") || errorMessage.includes("verify")) {
         toast.error(
@@ -165,6 +188,18 @@ export function CreateBroadcastForm() {
       return;
     }
 
+    // Check if trying to schedule a category-specific broadcast
+    if (
+      data.targetCategory &&
+      data.targetCategory !== "all" &&
+      schedulingOption !== "now"
+    ) {
+      toast.error(
+        "Scheduled sends are only available when targeting all subscribers. Please send immediately or change target to 'All Subscribers'."
+      );
+      return;
+    }
+
     if (schedulingOption === "custom" && !customDateTime) {
       toast.error("Please select a date and time for scheduling");
       return;
@@ -178,6 +213,7 @@ export function CreateBroadcastForm() {
         subject: data.subject!,
         content: data.content!,
         fromEmail: data.fromEmail!,
+        targetCategory: data.targetCategory!,
         scheduledAt: scheduledTime,
       };
 
@@ -196,7 +232,6 @@ export function CreateBroadcastForm() {
     } catch (error: any) {
       console.error("Error sending broadcast:", error);
 
-      // Handle Resend-specific errors
       const errorMessage = error?.message || "Failed to send broadcast";
       if (errorMessage.includes("domain") || errorMessage.includes("verify")) {
         toast.error(
@@ -216,9 +251,22 @@ export function CreateBroadcastForm() {
   const currentSubject = form.watch("subject");
   const currentContent = form.watch("content");
   const currentFromEmail = form.watch("fromEmail");
+  const currentTargetCategory = form.watch("targetCategory");
 
   const isLoading = createBroadcast.isPending || sendBroadcast.isPending;
   const isSaving = createBroadcast.isPending;
+
+  // Get recipient count for selected category
+  const getRecipientCount = () => {
+    if (!categoryStats) return 0;
+    if (currentTargetCategory === "all") {
+      return categoryStats.reduce((sum, stat) => sum + Number(stat.count), 0);
+    }
+    const stat = categoryStats.find(
+      (s) => s.category === currentTargetCategory
+    );
+    return stat ? Number(stat.count) : 0;
+  };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
@@ -311,6 +359,46 @@ export function CreateBroadcastForm() {
                 />
               </div>
 
+              {/* Target Category Selection */}
+              <Card className="p-4 sm:p-6 bg-muted/30">
+                <FormField
+                  control={form.control}
+                  name="targetCategory"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium flex items-center gap-2">
+                        <Target className="w-4 h-4" />
+                        Target Audience
+                      </FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        defaultValue={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select target category" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {SUBSCRIBER_CATEGORIES.map((cat) => (
+                            <SelectItem key={cat.value} value={cat.value}>
+                              {cat.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormDescription className="flex items-center gap-2">
+                        <Badge variant="secondary" className="font-mono">
+                          {getRecipientCount()}
+                        </Badge>
+                        <span className="text-xs">active recipients</span>
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </Card>
+
               <FormField
                 control={form.control}
                 name="content"
@@ -334,6 +422,19 @@ export function CreateBroadcastForm() {
                 <h3 className="text-base sm:text-lg font-semibold mb-4">
                   Scheduling Options
                 </h3>
+
+                {currentTargetCategory &&
+                  currentTargetCategory !== "all" &&
+                  schedulingOption !== "now" && (
+                    <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                      <p className="text-sm text-amber-800">
+                        <strong>Note:</strong> Scheduled sends are only
+                        available when targeting all subscribers.
+                        Category-specific broadcasts must be sent immediately.
+                      </p>
+                    </div>
+                  )}
+
                 <RadioGroup
                   value={schedulingOption}
                   onValueChange={setSchedulingOption}
@@ -344,41 +445,115 @@ export function CreateBroadcastForm() {
                     <Label htmlFor="now">Send immediately</Label>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="1hour" id="1hour" />
-                    <Label htmlFor="1hour">Send in 1 hour</Label>
+                    <RadioGroupItem
+                      value="1hour"
+                      id="1hour"
+                      disabled={currentTargetCategory !== "all"}
+                    />
+                    <Label
+                      htmlFor="1hour"
+                      className={
+                        currentTargetCategory !== "all"
+                          ? "text-muted-foreground"
+                          : ""
+                      }
+                    >
+                      Send in 1 hour{" "}
+                      {currentTargetCategory !== "all" &&
+                        "(All subscribers only)"}
+                    </Label>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="24hours" id="24hours" />
-                    <Label htmlFor="24hours">Send in 24 hours</Label>
+                    <RadioGroupItem
+                      value="24hours"
+                      id="24hours"
+                      disabled={currentTargetCategory !== "all"}
+                    />
+                    <Label
+                      htmlFor="24hours"
+                      className={
+                        currentTargetCategory !== "all"
+                          ? "text-muted-foreground"
+                          : ""
+                      }
+                    >
+                      Send in 24 hours{" "}
+                      {currentTargetCategory !== "all" &&
+                        "(All subscribers only)"}
+                    </Label>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="1week" id="1week" />
-                    <Label htmlFor="1week">Send in 1 week</Label>
+                    <RadioGroupItem
+                      value="1week"
+                      id="1week"
+                      disabled={currentTargetCategory !== "all"}
+                    />
+                    <Label
+                      htmlFor="1week"
+                      className={
+                        currentTargetCategory !== "all"
+                          ? "text-muted-foreground"
+                          : ""
+                      }
+                    >
+                      Send in 1 week{" "}
+                      {currentTargetCategory !== "all" &&
+                        "(All subscribers only)"}
+                    </Label>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="1month" id="1month" />
-                    <Label htmlFor="1month">Send in 1 month</Label>
+                    <RadioGroupItem
+                      value="1month"
+                      id="1month"
+                      disabled={currentTargetCategory !== "all"}
+                    />
+                    <Label
+                      htmlFor="1month"
+                      className={
+                        currentTargetCategory !== "all"
+                          ? "text-muted-foreground"
+                          : ""
+                      }
+                    >
+                      Send in 1 month{" "}
+                      {currentTargetCategory !== "all" &&
+                        "(All subscribers only)"}
+                    </Label>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="custom" id="custom" />
-                    <Label htmlFor="custom">
-                      Schedule for specific date & time
+                    <RadioGroupItem
+                      value="custom"
+                      id="custom"
+                      disabled={currentTargetCategory !== "all"}
+                    />
+                    <Label
+                      htmlFor="custom"
+                      className={
+                        currentTargetCategory !== "all"
+                          ? "text-muted-foreground"
+                          : ""
+                      }
+                    >
+                      Schedule for specific date & time{" "}
+                      {currentTargetCategory !== "all" &&
+                        "(All subscribers only)"}
                     </Label>
                   </div>
                 </RadioGroup>
 
-                {schedulingOption === "custom" && (
-                  <div className="mt-4 space-y-2">
-                    <Label htmlFor="customDateTime">Select Date & Time</Label>
-                    <Input
-                      id="customDateTime"
-                      type="datetime-local"
-                      value={customDateTime}
-                      onChange={(e) => setCustomDateTime(e.target.value)}
-                      min={new Date().toISOString().slice(0, 16)}
-                    />
-                  </div>
-                )}
+                {schedulingOption === "custom" &&
+                  currentTargetCategory === "all" && (
+                    <div className="mt-4 space-y-2">
+                      <Label htmlFor="customDateTime">Select Date & Time</Label>
+                      <Input
+                        id="customDateTime"
+                        type="datetime-local"
+                        value={customDateTime}
+                        onChange={(e) => setCustomDateTime(e.target.value)}
+                        min={new Date().toISOString().slice(0, 16)}
+                      />
+                    </div>
+                  )}
               </Card>
 
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pt-6 border-t">

@@ -21,6 +21,7 @@ export type Subscriber = {
   id: string;
   email: string;
   status: string;
+  category: string;
   source: string | null;
   created_at: Date | null;
 };
@@ -54,6 +55,28 @@ export const subscribersColumns: ColumnDef<Subscriber>[] = [
     cell: ({ row }) => (
       <div className="font-medium">{row.getValue("email")}</div>
     ),
+  },
+  {
+    accessorKey: "category",
+    header: "Category",
+    cell: ({ row }) => {
+      const category = row.getValue("category") as string;
+      const colors: Record<string, string> = {
+        general: "bg-gray-100 text-gray-800",
+        announcements: "bg-blue-100 text-blue-800",
+        updates: "bg-purple-100 text-purple-800",
+        newsletters: "bg-indigo-100 text-indigo-800",
+        promotions: "bg-amber-100 text-amber-800",
+      };
+      return (
+        <Badge
+          variant="outline"
+          className={colors[category] || "bg-gray-100 text-gray-800"}
+        >
+          {category.charAt(0).toUpperCase() + category.slice(1)}
+        </Badge>
+      );
+    },
   },
   {
     accessorKey: "status",

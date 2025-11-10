@@ -32,6 +32,7 @@ export type Broadcast = {
   title: string;
   subject: string;
   status: string;
+  target_category: string | null;
   recipient_count: number | null;
   created_at: Date | null;
 };
@@ -70,6 +71,30 @@ export const broadcastsColumns: ColumnDef<Broadcast>[] = [
     accessorKey: "subject",
     header: "Subject",
     cell: ({ row }) => <div>{row.getValue("subject")}</div>,
+  },
+  {
+    accessorKey: "target_category",
+    header: "Target",
+    cell: ({ row }) => {
+      const category = row.getValue("target_category") as string | null;
+      const displayCategory = category || "all";
+      const colors: Record<string, string> = {
+        all: "bg-slate-100 text-slate-800",
+        general: "bg-gray-100 text-gray-800",
+        announcements: "bg-blue-100 text-blue-800",
+        updates: "bg-purple-100 text-purple-800",
+        newsletters: "bg-indigo-100 text-indigo-800",
+        promotions: "bg-amber-100 text-amber-800",
+      };
+      return (
+        <Badge
+          variant="outline"
+          className={colors[displayCategory] || "bg-gray-100 text-gray-800"}
+        >
+          {displayCategory.charAt(0).toUpperCase() + displayCategory.slice(1)}
+        </Badge>
+      );
+    },
   },
   {
     accessorKey: "status",

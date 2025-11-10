@@ -10,10 +10,17 @@ import { baseProcedure, createTRPCRouter } from "@/trpc/init";
 const resend = new Resend(process.env.RESEND_API_KEY);
 const AUDIENCE_ID = process.env.RESEND_AUDIENCE_ID;
 
-// Helper function to add delay between requests
+// Categories constant
+export const SUBSCRIBER_CATEGORIES = [
+  "general",
+  "announcements",
+  "updates",
+  "newsletters",
+  "promotions",
+] as const;
+
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Helper function to delete contacts from Resend with rate limiting
 async function deleteFromResendWithRateLimit(
   subscribers: Array<{
     id: string;
@@ -23,7 +30,6 @@ async function deleteFromResendWithRateLimit(
 ) {
   const results = [];
 
-  // Process deletions sequentially with 500ms delay (2 per second)
   for (const subscriber of subscribers) {
     if (subscriber.resend_contact_id || subscriber.email) {
       try {
@@ -50,8 +56,6 @@ async function deleteFromResendWithRateLimit(
           error: resendError,
         });
       }
-
-      // Wait 500ms between requests to stay under 2 req/sec limit
       await delay(500);
     }
   }
@@ -65,21 +69,39 @@ export const subscribersRouter = createTRPCRouter({
       z.object({
         page: z.number().min(1).default(1),
         limit: z.number().min(1).max(100).default(10),
+        category: z.string().optional(), // New filter
       })
     )
     .query(async ({ input, ctx }) => {
       const offset = (input.page - 1) * input.limit;
 
-      const subscribers = await ctx.db
+      let query = ctx.db
         .select()
         .from(newsletterSubscribers)
         .orderBy(desc(newsletterSubscribers.created_at))
         .limit(input.limit)
         .offset(offset);
 
-      const [{ count }] = await ctx.db
+      // Apply category filter if provided
+      if (input.category && input.category !== "all") {
+        query = query.where(
+          eq(newsletterSubscribers.category, input.category)
+        ) as any;
+      }
+
+      const subscribers = await query;
+
+      let countQuery = ctx.db
         .select({ count: sql<number>`count(*)` })
         .from(newsletterSubscribers);
+
+      if (input.category && input.category !== "all") {
+        countQuery = countQuery.where(
+          eq(newsletterSubscribers.category, input.category)
+        ) as any;
+      }
+
+      const [{ count }] = await countQuery;
 
       return {
         subscribers,
@@ -89,14 +111,16 @@ export const subscribersRouter = createTRPCRouter({
         totalPages: Math.ceil(Number(count) / input.limit),
       };
     }),
+
   create: baseProcedure
     .input(
       z.object({
         email: z.email("Invalid email address").toLowerCase().trim(),
+        category: z.enum(SUBSCRIBER_CATEGORIES).default("general"),
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const email = input.email;
+      const { email, category } = input;
 
       const existingSubscriber = await ctx.db
         .select()
@@ -123,6 +147,7 @@ export const subscribersRouter = createTRPCRouter({
         .insert(newsletterSubscribers)
         .values({
           email,
+          category,
           source: "api",
           resend_contact_id: resendContact.data?.id,
           unsubscribe_token: unsubscribeToken,
@@ -132,6 +157,7 @@ export const subscribersRouter = createTRPCRouter({
 
       return newSubscriber;
     }),
+
   getOne: baseProcedure
     .input(
       z.object({
@@ -153,6 +179,7 @@ export const subscribersRouter = createTRPCRouter({
 
       return subscriber;
     }),
+
   deleteOne: baseProcedure
     .input(
       z.object({
@@ -174,7 +201,6 @@ export const subscribersRouter = createTRPCRouter({
 
       if (subscriber.resend_contact_id || subscriber.email) {
         try {
-          // Try to remove by contact ID first, fallback to email
           if (subscriber.resend_contact_id) {
             await resend.contacts.remove({
               id: subscriber.resend_contact_id,
@@ -200,6 +226,7 @@ export const subscribersRouter = createTRPCRouter({
 
       return subscriber;
     }),
+
   deleteMany: baseProcedure
     .input(
       z.object({
@@ -221,10 +248,8 @@ export const subscribersRouter = createTRPCRouter({
         });
       }
 
-      // Delete from Resend sequentially with rate limiting
       const resendResults = await deleteFromResendWithRateLimit(subscribers);
 
-      // Log any failures
       const failures = resendResults.filter((r) => !r.success);
       if (failures.length > 0) {
         console.warn(
@@ -233,7 +258,6 @@ export const subscribersRouter = createTRPCRouter({
         );
       }
 
-      // Delete from database
       await ctx.db
         .delete(newsletterSubscribers)
         .where(inArray(newsletterSubscribers.id, input.ids));
@@ -247,19 +271,22 @@ export const subscribersRouter = createTRPCRouter({
         },
       };
     }),
+
   updateOne: baseProcedure
     .input(
       z.object({
-        status: z.string().min(1, { message: "Status is required" }).optional(),
         id: z.string().min(1, { message: "Subscriber id is required" }),
+        status: z.string().optional(),
+        category: z.enum(SUBSCRIBER_CATEGORIES).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const status = input.status;
-      const updateData = {
-        status,
+      const updateData: any = {
         updated_at: new Date(),
       };
+
+      if (input.status) updateData.status = input.status;
+      if (input.category) updateData.category = input.category;
 
       const [updatedSubscriber] = await ctx.db
         .update(newsletterSubscribers)
@@ -269,4 +296,18 @@ export const subscribersRouter = createTRPCRouter({
 
       return updatedSubscriber;
     }),
+
+  // New procedure to get category stats
+  getCategoryStats: baseProcedure.query(async ({ ctx }) => {
+    const stats = await ctx.db
+      .select({
+        category: newsletterSubscribers.category,
+        count: sql<number>`count(*)`,
+      })
+      .from(newsletterSubscribers)
+      .where(eq(newsletterSubscribers.status, "active"))
+      .groupBy(newsletterSubscribers.category);
+
+    return stats;
+  }),
 });
